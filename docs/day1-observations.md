@@ -1,0 +1,1 @@
+E12 used 228 input tokens in 1972 ms; E11 used 274 input tokens in 4172 ms. Latency more than doubled while input tokens rose only about 20 percent. Using only a short document to estimate runtime understates the real workload, because longer cases also generate longer completions.
