@@ -6,6 +6,7 @@ Implement this module by following assignments/W02_Day1_Assignment_LOCAL.md.
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel
@@ -50,4 +51,8 @@ def compute_cost(model_id: str, input_tokens: int, output_tokens: int) -> float:
 
 def append_record(record: CallRecord, run_id: str) -> None:
     """Append one JSON record to runs/{run_id}.jsonl without rewriting the file."""
-    raise NotImplementedError
+    runs_dir = Path("runs")
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    path = runs_dir / f"{run_id}.jsonl"
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(record.model_dump_json() + "\n")
