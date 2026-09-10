@@ -1,4 +1,6 @@
 .env
+.env.*
+!.env.example
 .venv/
 __pycache__/
 .pytest_cache/
@@ -7,3 +9,21 @@ __pycache__/
 *.py[cod]
 runs/
 
+# OS
+.DS_Store
+Thumbs.db
+
+# Packaging
+build/
+dist/
+*.egg-info/
+
+# Coverage
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Editors
+.idea/
+*.swp
