@@ -17,6 +17,7 @@ from promptlab.usage import CallRecord, append_record, compute_cost
 CASE_IDS = ("E12", "E07", "E11")
 TEMPERATURE = 0.0
 MAX_OUTPUT_TOKENS = 256
+TRUNCATION_OUTPUT_TOKENS = 8
 CASES_PATH = PROJECT_ROOT / "cases" / "extraction.jsonl"
 PROMPT_PATH = PROJECT_ROOT / "src" / "prompts" / "baseline.v0.md"
 
@@ -74,6 +75,9 @@ def record_from_payload(
     case_id: str,
     payload: dict[str, Any],
     latency_ms: int,
+    max_output_tokens: int = MAX_OUTPUT_TOKENS,
+    attempt: int = 1,
+    error_type: str | None = None,
 ) -> CallRecord:
     input_tokens = int(payload["prompt_eval_count"])
     output_tokens = int(payload["eval_count"])
@@ -89,17 +93,47 @@ def record_from_payload(
         case_id=case_id,
         prompt_id="baseline",
         prompt_version="v0",
-        attempt=1,
+        attempt=attempt,
         temperature=TEMPERATURE,
-        max_output_tokens=MAX_OUTPUT_TOKENS,
+        max_output_tokens=max_output_tokens,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         cached_input_tokens=None,
         latency_ms=latency_ms,
         cost_usd=compute_cost(model_id, input_tokens, output_tokens),
         stop_reason=done_reason if isinstance(done_reason, str) else None,
-        error_type=None,
+        error_type=error_type,
         response_text=response_text if isinstance(response_text, str) else None,
+    )
+
+
+def demonstrate_truncation(
+    settings: Settings,
+    model_id: str,
+    prompt: str,
+    run_id: str,
+) -> None:
+    payload, latency_ms = call_ollama(
+        settings, model_id, prompt, TRUNCATION_OUTPUT_TOKENS
+    )
+    done_reason = payload.get("done_reason")
+    error_type = "TruncatedResponseError" if done_reason == "length" else None
+    demo_run_id = f"{run_id}-truncation"
+    record = record_from_payload(
+        run_id=demo_run_id,
+        model_id=model_id,
+        case_id="E11",
+        payload=payload,
+        latency_ms=latency_ms,
+        max_output_tokens=TRUNCATION_OUTPUT_TOKENS,
+        attempt=2,
+        error_type=error_type,
+    )
+    append_record(record, demo_run_id)
+    print(
+        f"E11 truncation demo num_predict={TRUNCATION_OUTPUT_TOKENS} "
+        f"stop_reason={record.stop_reason} error_type={record.error_type} "
+        f"(excluded from evidence; wrote runs/{demo_run_id}.jsonl)"
     )
 
 
@@ -128,6 +162,14 @@ def main() -> None:
             f"output_tokens={record.output_tokens} latency_ms={record.latency_ms} "
             f"stop_reason={record.stop_reason}"
         )
+
+    e11 = next(case for case in cases if str(case["id"]) == "E11")
+    demonstrate_truncation(
+        settings,
+        model_id,
+        prompt_template.replace("{document_text}", str(e11["source"])),
+        run_id,
+    )
 
 
 if __name__ == "__main__":
