@@ -13,7 +13,7 @@ from promptlab.adapters.ollama import OllamaAdapter
 from promptlab.config import PROJECT_ROOT, Settings
 
 CASE_IDS = tuple(f"S{index:02d}" for index in range(1, 13))
-MAX_OUTPUT_TOKENS = 400
+MAX_OUTPUT_TOKENS = 548
 CASES_PATH = PROJECT_ROOT / "cases" / "summarization.jsonl"
 PROMPT_PATH = PROJECT_ROOT / "src" / "prompts" / "baseline.v0.md"
 DOCUMENT_PLACEHOLDER = "{document_text}"
