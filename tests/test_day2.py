@@ -29,6 +29,10 @@ def test_case_ids_cover_all_twelve_summarization_cases() -> None:
     assert CASE_IDS == EXPECTED_CASE_IDS
 
 
+def test_max_output_tokens_is_the_shared_qwen_truncation_boundary() -> None:
+    assert MAX_OUTPUT_TOKENS == 400
+
+
 def test_load_cases_returns_all_summarization_ids_in_order() -> None:
     cases = load_cases(CASES_PATH, CASE_IDS)
 
