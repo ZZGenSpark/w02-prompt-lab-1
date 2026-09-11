@@ -30,7 +30,7 @@ def test_case_ids_cover_all_twelve_summarization_cases() -> None:
 
 
 def test_max_output_tokens_is_a_shared_ceiling_both_models_can_finish_under() -> None:
-    assert MAX_OUTPUT_TOKENS == 548
+    assert MAX_OUTPUT_TOKENS == 1024
 
 
 def test_load_cases_returns_all_summarization_ids_in_order() -> None:
