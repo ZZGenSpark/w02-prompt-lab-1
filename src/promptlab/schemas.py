@@ -57,6 +57,30 @@ class SummarizationOutput(StrictModel):
         }
 
 
+class ProcedureSummary(StrictModel):
+    document_status: DocumentStatus
+    version: EvidenceField
+    effective_date: EvidenceField
+    superseded_status: EvidenceField
+    scope: EvidenceField
+    required_analyst_actions: EvidenceField
+    evidence_to_gather: EvidenceField
+    deadlines: EvidenceField
+    out_of_scope_path: EvidenceField
+
+    def evidence_fields(self) -> dict[str, EvidenceField]:
+        return {
+            "version": self.version,
+            "effective_date": self.effective_date,
+            "superseded_status": self.superseded_status,
+            "scope": self.scope,
+            "required_analyst_actions": self.required_analyst_actions,
+            "evidence_to_gather": self.evidence_to_gather,
+            "deadlines": self.deadlines,
+            "out_of_scope_path": self.out_of_scope_path,
+        }
+
+
 class PolicyExtraction(StrictModel):
     document_status: DocumentStatus
     policy_name: EvidenceField
@@ -81,7 +105,7 @@ class PolicyExtraction(StrictModel):
 
 OUTPUT_SCHEMAS: dict[TaskName, type[StrictModel]] = {
     "triage": TriageOutput,
-    "summarization": SummarizationOutput,
+    "summarization": ProcedureSummary,
     "extraction": PolicyExtraction,
 }
 
