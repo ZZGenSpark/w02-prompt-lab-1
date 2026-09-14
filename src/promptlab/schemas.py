@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -108,4 +109,9 @@ OUTPUT_SCHEMAS: dict[TaskName, type[StrictModel]] = {
     "summarization": ProcedureSummary,
     "extraction": PolicyExtraction,
 }
+
+
+def schema_description(model: type[BaseModel]) -> str:
+    """Return a prompt-ready JSON Schema generated from a Pydantic model."""
+    return json.dumps(model.model_json_schema(), indent=2)
 
