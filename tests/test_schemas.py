@@ -5,23 +5,31 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from promptlab.schemas import (  # type: ignore[import-untyped]
+from promptlab.schemas import (
     OUTPUT_SCHEMAS,
     EvidenceField,
     PolicyExtraction,
-    ProcedureSummary,
+    SummarizationOutput,
     schema_description,
 )
 
-REQUIRED_EVIDENCE_FIELDS = (
+SUMMARIZATION_EVIDENCE_FIELDS = (
+    "title",
     "version",
     "effective_date",
-    "superseded_status",
-    "scope",
-    "required_analyst_actions",
-    "evidence_to_gather",
-    "deadlines",
-    "out_of_scope_path",
+    "purpose",
+    "required_steps",
+    "exceptions",
+)
+
+EXTRACTION_EVIDENCE_FIELDS = (
+    "policy_name",
+    "version",
+    "effective_date",
+    "jurisdictions",
+    "beneficial_ownership_threshold",
+    "review_frequency",
+    "required_documents",
 )
 
 
@@ -36,81 +44,127 @@ def _evidence(
     return {"value": value, "status": status, "citation": citation}
 
 
-def _procedure_payload(**overrides: object) -> dict[str, object]:
+def _payload(field_names: tuple[str, ...], **overrides: object) -> dict[str, object]:
     payload: dict[str, object] = {
         "document_status": "valid",
-        **{name: _evidence() for name in REQUIRED_EVIDENCE_FIELDS},
+        **{name: _evidence() for name in field_names},
     }
     payload.update(overrides)
     return payload
 
 
-def test_procedure_summary_accepts_complete_payload() -> None:
-    summary = ProcedureSummary.model_validate(
-        _procedure_payload(
-            required_analyst_actions=_evidence(
+def test_summarization_output_accepts_complete_payload() -> None:
+    summary = SummarizationOutput.model_validate(
+        _payload(
+            SUMMARIZATION_EVIDENCE_FIELDS,
+            required_steps=_evidence(
                 value=["Create a review item", "Route to Card Disputes"],
                 citation="Required Steps",
             ),
-            deadlines=_evidence(status="absent"),
+            exceptions=_evidence(status="absent"),
         )
     )
 
     assert summary.document_status == "valid"
-    assert summary.version.value == "1.0"
-    assert summary.required_analyst_actions.status == "present"
-    assert summary.deadlines.status == "absent"
-    assert summary.deadlines.value is None
+    assert summary.title.citation == "Document Control"
+    assert summary.required_steps.status == "present"
+    assert summary.exceptions.status == "absent"
+    assert summary.exceptions.value is None
+    assert summary.exceptions.citation is None
 
 
-def test_procedure_summary_forbids_extra_fields() -> None:
+def test_summarization_output_forbids_extra_fields() -> None:
     with pytest.raises(ValidationError):
-        ProcedureSummary.model_validate(_procedure_payload(title="not allowed"))
+        SummarizationOutput.model_validate(
+            _payload(SUMMARIZATION_EVIDENCE_FIELDS, scope="not allowed")
+        )
 
 
-def test_procedure_summary_rejects_unknown_document_status() -> None:
+def test_summarization_output_rejects_unknown_document_status() -> None:
     with pytest.raises(ValidationError):
-        ProcedureSummary.model_validate(_procedure_payload(document_status="draft"))
+        SummarizationOutput.model_validate(
+            _payload(SUMMARIZATION_EVIDENCE_FIELDS, document_status="draft")
+        )
 
 
-def test_procedure_summary_requires_all_assignment_fields() -> None:
-    payload = _procedure_payload()
-    del payload["scope"]
+def test_summarization_output_requires_existing_fields() -> None:
+    payload = _payload(SUMMARIZATION_EVIDENCE_FIELDS)
+    del payload["purpose"]
 
     with pytest.raises(ValidationError):
-        ProcedureSummary.model_validate(payload)
+        SummarizationOutput.model_validate(payload)
 
 
-def test_procedure_summary_evidence_fields_covers_evidence_only() -> None:
-    summary = ProcedureSummary.model_validate(_procedure_payload())
+def test_summarization_evidence_fields_covers_evidence_only() -> None:
+    summary = SummarizationOutput.model_validate(_payload(SUMMARIZATION_EVIDENCE_FIELDS))
     fields = summary.evidence_fields()
 
-    assert set(fields) == set(REQUIRED_EVIDENCE_FIELDS)
+    assert set(fields) == set(SUMMARIZATION_EVIDENCE_FIELDS)
     assert all(isinstance(field, EvidenceField) for field in fields.values())
     assert "document_status" not in fields
 
 
-def test_summarization_schema_is_procedure_summary() -> None:
-    assert OUTPUT_SCHEMAS["summarization"] is ProcedureSummary
+def test_evidence_field_uses_citation_not_section() -> None:
+    field = EvidenceField.model_validate(
+        {"value": "1.0", "status": "present", "citation": "Document Control"}
+    )
+
+    assert field.citation == "Document Control"
+    assert "section" not in EvidenceField.model_fields
+    with pytest.raises(ValidationError):
+        EvidenceField.model_validate(
+            {
+                "value": "1.0",
+                "status": "present",
+                "citation": "Document Control",
+                "section": "Document Control",
+            }
+        )
+
+
+def test_policy_extraction_accepts_complete_payload() -> None:
+    extraction = PolicyExtraction.model_validate(
+        _payload(
+            EXTRACTION_EVIDENCE_FIELDS,
+            beneficial_ownership_threshold=_evidence(status="absent"),
+        )
+    )
+
+    assert extraction.document_status == "valid"
+    assert extraction.policy_name.citation == "Document Control"
+    assert extraction.beneficial_ownership_threshold.status == "absent"
+
+
+def test_output_schemas_use_existing_models() -> None:
+    assert OUTPUT_SCHEMAS["summarization"] is SummarizationOutput
+    assert OUTPUT_SCHEMAS["extraction"] is PolicyExtraction
 
 
 def test_schema_description_is_pretty_printed_json_schema() -> None:
-    description = schema_description(ProcedureSummary)
+    description = schema_description(SummarizationOutput)
     parsed = json.loads(description)
 
-    assert description == json.dumps(ProcedureSummary.model_json_schema(), indent=2)
-    assert parsed["title"] == "ProcedureSummary"
+    assert description == json.dumps(SummarizationOutput.model_json_schema(), indent=2)
+    assert parsed["title"] == "SummarizationOutput"
     assert parsed["additionalProperties"] is False
-    for name in ("document_status", *REQUIRED_EVIDENCE_FIELDS):
+    for name in ("document_status", *SUMMARIZATION_EVIDENCE_FIELDS):
         assert name in parsed["properties"]
         assert name in parsed["required"]
 
 
+def test_schema_description_includes_citation_on_evidence() -> None:
+    parsed = json.loads(schema_description(EvidenceField))
+
+    assert "citation" in parsed["properties"]
+    assert "section" not in parsed["properties"]
+
+
 def test_schema_description_differs_by_model() -> None:
-    summary_schema = schema_description(ProcedureSummary)
+    summary_schema = schema_description(SummarizationOutput)
     extraction_schema = schema_description(PolicyExtraction)
 
     assert summary_schema != extraction_schema
-    assert "required_analyst_actions" in summary_schema
+    assert "required_steps" in summary_schema
     assert "beneficial_ownership_threshold" in extraction_schema
     assert "beneficial_ownership_threshold" not in summary_schema
+    assert '"citation"' in extraction_schema
