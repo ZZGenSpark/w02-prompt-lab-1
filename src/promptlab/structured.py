@@ -47,7 +47,9 @@ def _repair_request(request: CompletionRequest, error: Exception) -> CompletionR
         "Do not return a JSON Schema. Do not include $defs, properties, $ref, "
         "additionalProperties, required, or type as top-level keys. "
         "Do not wrap the object in Markdown fences. Do not add commentary. "
-        "Do not change any field the error does not concern.\n"
+        "Do not change any field the error does not concern. "
+        "Every evidence object must include the required value key; when status "
+        "is absent, set value to null and citation to null.\n"
         f"<error>\n{error}\n</error>"
     )
     return request.model_copy(update={"user_content": user_content})

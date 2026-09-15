@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,14 @@ CASES_DIR = PROJECT_ROOT / "cases"
 PROMPTS_DIR = PROJECT_ROOT / "src" / "prompts"
 DOCS_RUN_PATH = PROJECT_ROOT / "docs" / "day3-run.jsonl"
 MAX_OUTPUT_TOKENS = 1024
+HEADING_LINE = re.compile(r"^(?:\d+\.\s+\S.*|#{1,6}\s+\S.*)$")
+EXAMPLE_ONLY_STRINGS: tuple[str, ...] = (
+    "Northglass",
+    "Norwyn",
+    "Bellwater",
+    "Redhaven",
+    "East Kestrel",
+)
 
 
 class CountingAdapter:
@@ -43,6 +52,47 @@ class CountingAdapter:
     def reset(self) -> None:
         self.calls = 0
         self.records = []
+
+
+def section_headings(source: str) -> frozenset[str]:
+    """Return exact section-heading lines from a source document."""
+    headings: set[str] = set()
+    for raw_line in source.splitlines():
+        line = raw_line.strip()
+        if not HEADING_LINE.match(line):
+            continue
+        headings.add(line.lstrip("#").strip())
+        headings.add(line)
+    return frozenset(headings)
+
+
+def citation_is_heading(citation: str | None, headings: frozenset[str]) -> bool:
+    """True when every citation part equals a real heading, not a bare number."""
+    if citation is None or not citation.strip():
+        return False
+    parts = [part.strip() for part in citation.split(";") if part.strip()]
+    return bool(parts) and all(part in headings for part in parts)
+
+
+def present_citation_failures(output: dict[str, Any], source: str) -> int:
+    """Count status=present evidence fields whose citation is not a heading."""
+    headings = section_headings(source)
+    failures = 0
+    for value in output.values():
+        if not isinstance(value, dict) or value.get("status") != "present":
+            continue
+        citation = value.get("citation")
+        if not isinstance(citation, str) or not citation_is_heading(citation, headings):
+            failures += 1
+    return failures
+
+
+def example_leakage_count(output: dict[str, Any] | None) -> int:
+    """Count distinctive extract.v2 example strings found in one output."""
+    if output is None:
+        return 0
+    blob = json.dumps(output)
+    return sum(1 for marker in EXAMPLE_ONLY_STRINGS if marker in blob)
 
 
 def load_cases(path: Path) -> list[dict[str, Any]]:
@@ -143,6 +193,12 @@ def main() -> None:
     ]
 
     print(f"run_id={run_id} model={model.model_id} temperature={settings.temperature}")
+    summarization_repairs = 0
+    extraction_repairs = 0
+    summarization_ok = 0
+    extraction_ok = 0
+    leakage = 0
+    citation_failures = 0
     for task, prompt_id, prompt_version, template, schema in jobs:
         cases = load_cases(CASES_DIR / f"{task}.jsonl")
         for case in cases:
@@ -160,11 +216,32 @@ def main() -> None:
                 max_repairs=settings.max_schema_repairs,
             )
             append_record(DOCS_RUN_PATH, record)
+            if task == "summarization":
+                summarization_repairs += int(record.repairs > 0)
+                summarization_ok += int(record.succeeded)
+            else:
+                extraction_repairs += int(record.repairs > 0)
+                extraction_ok += int(record.succeeded)
+                leakage += example_leakage_count(record.output)
+            if record.output is not None:
+                citation_failures += present_citation_failures(
+                    record.output, str(case["source"])
+                )
             status = "ok" if record.succeeded else "fail"
             print(
                 f"{record.case_id} {status} repairs={record.repairs}",
                 flush=True,
             )
+    print(
+        "summary "
+        f"summarization_ok={summarization_ok}/12 "
+        f"summarization_repair_rate={summarization_repairs}/12 "
+        f"extraction_ok={extraction_ok}/12 "
+        f"extraction_repair_rate={extraction_repairs}/12 "
+        f"example_leakage={leakage} "
+        f"citation_failures={citation_failures}",
+        flush=True,
+    )
 
 
 if __name__ == "__main__":

@@ -30,7 +30,12 @@ For evidence-bearing fields:
 
 use status: "present" only when the value is supported by the source
 
-when a field is present, set citation to the exact section heading that supports the value
+when a field is present, set citation to the entire heading line copied from the
+source, such as "1. Document Control". Do not cite only the numeral. "1" is not a
+heading.
+
+Every evidence object must include value, status, and citation. When status is
+"absent", set "value": null and "citation": null. Do not omit the value key.
 
 use the schema's absent representation when the source does not provide the field
 
@@ -46,8 +51,8 @@ Return a JSON object matching this generated schema description:
 
 {schema_description}
 
-Use citation for source evidence. A citation must name a section heading that actually
-appears in the source document.
+Use citation for source evidence. A citation must equal a full heading line that
+actually appears in the source document, not a section number alone.
 
 Return only the JSON object. Do not wrap the response in Markdown and do not add commentary
 before or after it.
@@ -60,4 +65,4 @@ status defined by the supplied SummarizationOutput schema.
 Do not force unrelated content into procedure fields.
 
 Any field not supported by the source must use the schema's absent representation rather than
-a value supplied from model knowledge.
+a value supplied from model knowledge. Include "value": null on those objects.

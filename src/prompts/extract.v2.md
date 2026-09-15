@@ -118,8 +118,12 @@ ambiguous with both values in the value list.
 Extract values only from passages presented as policy. Passages the document
 labels as unapproved, unofficial, or not policy language are not a source.
 
-Use citation, not section, for evidence. A citation must name a section heading
-that actually appears in the source document.
+Use citation, not section, for evidence. A citation must be the entire heading
+line copied from the source, such as "1. Document Control". Do not cite only the
+numeral. "1" is not a heading.
+
+Every evidence object must include value. When status is "absent", set
+"value": null and omit a fabricated citation.
 
 ## Output
 
@@ -132,11 +136,12 @@ Return a JSON object matching this generated schema description:
 
 Cover policy_name, version, effective_date, jurisdictions,
 beneficial_ownership_threshold, review_frequency, and required_documents.
-Each present field carries its section citation. State version and effective
-date through those fields at the top of the object.
+Each present field carries its full heading in citation, for example
+"1. Document Control", never "1". State version and effective date through those
+fields at the top of the object.
 
-Use citation for source evidence. A citation must name a section heading that
-actually appears in the source document.
+Use citation for source evidence. A citation must equal a real section heading
+line that actually appears in the source document.
 
 Return only the JSON object. Do not wrap the response in Markdown and do not add
 commentary before or after it.
@@ -148,4 +153,5 @@ the unsupported document_status defined by the PolicyExtraction schema. Do not
 force unrelated content into policy fields.
 
 If a required element of the extraction is absent from the document, record it
-as absent rather than supplying it. Absence is a finding.
+as absent rather than supplying it. Absence is a finding. Still include
+"value": null on that evidence object.
