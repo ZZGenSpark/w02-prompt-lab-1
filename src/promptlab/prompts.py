@@ -93,6 +93,13 @@ def _placeholders(template: str) -> set[str]:
     return set(_PLACEHOLDER.findall(template))
 
 
+def _escape_untrusted(text: str) -> str:
+    """Prevent untrusted text from closing document or customer markers."""
+    return text.replace(CUSTOMER_MARKER_CLOSE, "&lt;/customer_message&gt;").replace(
+        DOCUMENT_MARKER_CLOSE, "&lt;/document&gt;"
+    )
+
+
 def render_user(
     template: PromptTemplate,
     variables: Mapping[str, str],
@@ -108,4 +115,15 @@ def render_user(
     - untrusted text is supplied through ``document_text``
     - literal JSON braces in prompt examples must remain literal
     """
-    raise NotImplementedError
+    required = _placeholders(template.user_template)
+    values = dict(variables)
+    values["document_text"] = _escape_untrusted(untrusted)
+
+    missing = sorted(name for name in required if name not in values)
+    if missing:
+        raise MissingPromptVariableError(missing)
+
+    rendered = template.user_template
+    for name in required:
+        rendered = rendered.replace("{" + name + "}", values[name])
+    return rendered
