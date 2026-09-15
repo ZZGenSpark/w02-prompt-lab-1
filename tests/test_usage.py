@@ -7,9 +7,9 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from promptlab.config import Settings  # type: ignore[import-untyped]
-from promptlab.errors import UnknownModelError  # type: ignore[import-untyped]
-from promptlab.usage import CallRecord, append_record, compute_cost  # type: ignore[import-untyped]
+from promptlab.config import Settings
+from promptlab.errors import UnknownModelError
+from promptlab.usage import CallRecord, append_record, compute_cost
 
 
 def mistral_id() -> str:
@@ -67,53 +67,57 @@ def test_call_record_accepts_mistral_extraction() -> None:
 
 def test_call_record_rejects_invalid_provider() -> None:
     with pytest.raises(ValidationError):
-        CallRecord(
-            record_id="x",
-            run_id="x",
-            timestamp=datetime.now(UTC),
-            provider="openai",
-            model_id=mistral_id(),
-            task="extraction",
-            case_id="E12",
-            prompt_id="baseline",
-            prompt_version="v0",
-            attempt=1,
-            temperature=0.0,
-            max_output_tokens=256,
-            input_tokens=1,
-            output_tokens=1,
-            cached_input_tokens=None,
-            latency_ms=1,
-            cost_usd=0.0,
-            stop_reason=None,
-            error_type=None,
-            response_text=None,
+        CallRecord.model_validate(
+            {
+                "record_id": "x",
+                "run_id": "x",
+                "timestamp": datetime.now(UTC),
+                "provider": "openai",
+                "model_id": mistral_id(),
+                "task": "extraction",
+                "case_id": "E12",
+                "prompt_id": "baseline",
+                "prompt_version": "v0",
+                "attempt": 1,
+                "temperature": 0.0,
+                "max_output_tokens": 256,
+                "input_tokens": 1,
+                "output_tokens": 1,
+                "cached_input_tokens": None,
+                "latency_ms": 1,
+                "cost_usd": 0.0,
+                "stop_reason": None,
+                "error_type": None,
+                "response_text": None,
+            }
         )
 
 
 def test_call_record_rejects_invalid_task() -> None:
     with pytest.raises(ValidationError):
-        CallRecord(
-            record_id="x",
-            run_id="x",
-            timestamp=datetime.now(UTC),
-            provider="ollama",
-            model_id=mistral_id(),
-            task="classification",
-            case_id="E12",
-            prompt_id="baseline",
-            prompt_version="v0",
-            attempt=1,
-            temperature=0.0,
-            max_output_tokens=256,
-            input_tokens=1,
-            output_tokens=1,
-            cached_input_tokens=None,
-            latency_ms=1,
-            cost_usd=0.0,
-            stop_reason=None,
-            error_type=None,
-            response_text=None,
+        CallRecord.model_validate(
+            {
+                "record_id": "x",
+                "run_id": "x",
+                "timestamp": datetime.now(UTC),
+                "provider": "ollama",
+                "model_id": mistral_id(),
+                "task": "classification",
+                "case_id": "E12",
+                "prompt_id": "baseline",
+                "prompt_version": "v0",
+                "attempt": 1,
+                "temperature": 0.0,
+                "max_output_tokens": 256,
+                "input_tokens": 1,
+                "output_tokens": 1,
+                "cached_input_tokens": None,
+                "latency_ms": 1,
+                "cost_usd": 0.0,
+                "stop_reason": None,
+                "error_type": None,
+                "response_text": None,
+            }
         )
 
 

@@ -9,8 +9,8 @@ from unittest.mock import MagicMock
 import httpx
 import pytest
 
-from promptlab.config import Settings  # type: ignore[import-untyped]
-from promptlab.day1 import (  # type: ignore[import-untyped]
+from promptlab.config import Settings
+from promptlab.day1 import (
     CASES_PATH,
     TRUNCATION_OUTPUT_TOKENS,
     call_ollama,
