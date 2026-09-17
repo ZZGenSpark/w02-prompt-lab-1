@@ -102,6 +102,38 @@ def test_success_maps_generate_text_and_usage(
     assert record.error_type is None
 
 
+def test_qwen_generate_payload_disables_thinking() -> None:
+    qwen = OllamaAdapter(model_id=_model_id("qwen"))
+    payload = qwen.build_generate_payload(_request())
+    assert payload["think"] is False
+    assert payload["model"] == _model_id("qwen")
+    assert payload["stream"] is False
+
+
+def test_mistral_generate_payload_omits_think() -> None:
+    mistral = OllamaAdapter(model_id=_model_id("mistral"))
+    payload = mistral.build_generate_payload(_request())
+    assert "think" not in payload
+    assert payload["options"]["temperature"] == 0.0
+
+
+def test_qwen_http_call_sends_think_false(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    captured: list[dict[str, object]] = []
+
+    def fake_post(*args: Any, **kwargs: Any) -> FakeResponse:
+        captured.append(dict(kwargs["json"]))
+        return FakeResponse(text="{}")
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    OllamaAdapter(model_id=_model_id("qwen")).complete(_request(), "think-off-run")
+
+    assert captured[0]["think"] is False
+
+
 def test_success_falls_back_to_message_content_when_response_missing(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

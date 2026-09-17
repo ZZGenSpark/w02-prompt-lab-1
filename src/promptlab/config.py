@@ -24,6 +24,7 @@ class ModelConfig:
     model_id: str
     input_usd_per_million: Decimal = Decimal("0")
     output_usd_per_million: Decimal = Decimal("0")
+    think: bool | None = None
 
     def cost(self, prompt_tokens: int, completion_tokens: int) -> Decimal:
         million = Decimal(1_000_000)
@@ -31,6 +32,13 @@ class ModelConfig:
             Decimal(prompt_tokens) * self.input_usd_per_million / million
             + Decimal(completion_tokens) * self.output_usd_per_million / million
         )
+
+
+def _env_flag(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
 @dataclass(frozen=True)
@@ -54,7 +62,11 @@ class Settings:
             ).rstrip("/"),
             models={
                 "mistral": ModelConfig(logical_name="mistral", model_id=model_a),
-                "qwen": ModelConfig(logical_name="qwen", model_id=model_b),
+                "qwen": ModelConfig(
+                    logical_name="qwen",
+                    model_id=model_b,
+                    think=_env_flag("QWEN_THINK", default=False),
+                ),
             },
             temperature=float(os.getenv("TEMPERATURE", "0.0")),
             max_retries=int(os.getenv("MAX_RETRIES", "2")),
