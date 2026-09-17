@@ -122,6 +122,22 @@ def _usage_summary(
     )
 
 
+def _case_summary(records: Sequence[OutputRecord]) -> tuple[str, str, str]:
+    """Median/max wall time for a whole case (all attempts summed)."""
+    latencies = [
+        float(row.case_latency_ms)
+        for row in records
+        if getattr(row, "case_latency_ms", None) is not None
+    ]
+    if not latencies:
+        return "—", "—", "0"
+    return (
+        f"{_fmt_number(float(median(latencies)))} ms",
+        f"{_fmt_number(float(max(latencies)))} ms",
+        str(len(latencies)),
+    )
+
+
 def _output_summary(
     records: Sequence[OutputRecord],
 ) -> tuple[str, str, str]:
@@ -254,6 +270,8 @@ def _write_report(
         f"Run ID: `{run_id}`",
         "",
         "Counts are reported with their denominators. "
+        "Call latency is one HTTP attempt. Case latency sums every attempt "
+        "for that case, including repairs and transport retries. "
         "Latency uses median and maximum rather than mean. "
         "Local Ollama provider cost is `$0.00`.",
         "",
@@ -279,10 +297,11 @@ def _write_report(
                 f"## {task.title()}",
                 "",
                 "| Model | Prompt | Quality | Valid outputs | Input tokens/case | "
-                "Output tokens/case | Median latency | Max latency | n | "
+                "Output tokens/case | Median call latency | Max call latency | "
+                "n calls | Median case latency | Max case latency | n cases | "
                 "Repairs | Retries | Final failures |",
                 "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | "
-                "---: | ---: | ---: |",
+                "---: | ---: | ---: | ---: | ---: | ---: |",
             ]
         )
 
@@ -301,11 +320,12 @@ def _write_report(
             (
                 input_tokens,
                 output_tokens,
-                median_latency,
-                max_latency,
-                n,
+                median_call_latency,
+                max_call_latency,
+                n_calls,
                 retries,
             ) = _usage_summary(u, case_count)
+            median_case_latency, max_case_latency, n_cases = _case_summary(o)
 
             valid_outputs, repairs, failures = _output_summary(o)
             metric_text = _metric_text(s)
@@ -315,8 +335,9 @@ def _write_report(
                 "| "
                 f"{model_name} | {prompt} | {metric_text} | {valid_outputs} | "
                 f"{input_tokens} | {output_tokens} | "
-                f"{median_latency} | {max_latency} | {n} | {repairs} | "
-                f"{retries} | {failures} |"
+                f"{median_call_latency} | {max_call_latency} | {n_calls} | "
+                f"{median_case_latency} | {max_case_latency} | {n_cases} | "
+                f"{repairs} | {retries} | {failures} |"
             )
 
         lines.append("")
@@ -335,8 +356,8 @@ def _write_report(
             "- No production-volume reliability claim is being made.",
             "- Local Ollama latency depends on lab hardware and is not a cloud SLA.",
             "- Local provider/API charge is `$0.00`; input tokens, output tokens, "
-            "median/max latency, observation count, repair rate, and retry/failure "
-            "counts are the operational measurements.",
+            "per-call and per-case median/max latency, observation counts, repair "
+            "rate, and retry/failure counts are the operational measurements.",
             "",
         ]
     )

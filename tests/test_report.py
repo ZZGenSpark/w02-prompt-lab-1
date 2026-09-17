@@ -36,6 +36,10 @@ def test_report_is_generated_from_records(tmp_path: Path) -> None:
             succeeded=True,
             repairs=0,
             output={"queue": "card_dispute"},
+            case_input_tokens=100,
+            case_output_tokens=25,
+            case_latency_ms=125.0,
+            case_cost_usd=Decimal("0"),
         )
     ]
     scores = [
@@ -66,12 +70,68 @@ def test_report_is_generated_from_records(tmp_path: Path) -> None:
     assert "1/1" in text
     assert "triage.v1" in text
     assert "Input tokens/case" in text
-    assert "100" in text
+    assert "125" in text
+    assert "Median call latency" in text
+    assert "Median case latency" in text
     assert "12 cases per task" in text
     assert "$0.00" in text
     assert "Untested combinations" in text
     assert "mistral" in decision.read_text(encoding="utf-8")
     assert "Human-boundary re-verification" not in text
+
+
+def test_report_keeps_call_latency_and_sums_case_latency(tmp_path: Path) -> None:
+    usage = [
+        _usage(),
+        UsageRecord(
+            run_id="demo",
+            task="triage",
+            case_id="T01",
+            model_name="mistral",
+            model_id="configured-a",
+            prompt_version="v1",
+            attempt=1,
+            kind="repair",
+            status="success",
+            prompt_tokens=40,
+            completion_tokens=10,
+            latency_ms=200.0,
+            cost_usd=Decimal("0"),
+        ),
+    ]
+    outputs = [
+        OutputRecord(
+            run_id="demo",
+            task="triage",
+            case_id="T01",
+            model_name="mistral",
+            model_id="configured-a",
+            prompt_version="v1",
+            succeeded=True,
+            repairs=1,
+            output={"queue": "card_dispute"},
+            case_input_tokens=140,
+            case_output_tokens=35,
+            case_latency_ms=325.0,
+            case_cost_usd=Decimal("0"),
+        )
+    ]
+    report = tmp_path / "comparison.md"
+    write_reports(
+        run_id="demo",
+        models=["mistral"],
+        usage=usage,
+        outputs=outputs,
+        scores=[],
+        report_path=report,
+        decision_path=tmp_path / "model-decision.md",
+    )
+    text = report.read_text(encoding="utf-8")
+    assert "Median call latency" in text
+    assert "Median case latency" in text
+    assert "325 ms" in text
+    assert "200 ms" in text
+    assert "1/1" in text  # repairs
 
 
 def test_report_labels_qwen_rows_as_prompt_transfer(tmp_path: Path) -> None:
@@ -226,10 +286,10 @@ def test_day5_model_decision_names_task_model_prompt_and_reopen() -> None:
     from promptlab.config import PROJECT_ROOT
 
     text = (PROJECT_ROOT / "docs" / "model-decision.md").read_text(encoding="utf-8")
-    assert "day5-local-01" in text
+    assert "day5-local-03" in text
     for task in ("Triage", "Summarization", "Extraction"):
         assert f"### {task}" in text
-    assert "selected model: mistral" in text
+    assert "selected model: qwen" in text
     assert "`triage.v1`" in text
     assert "`summarize.v1`" in text
     assert "`extract.v2`" in text

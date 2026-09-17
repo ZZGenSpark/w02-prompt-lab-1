@@ -142,6 +142,9 @@ def test_evaluate_case_goes_through_complete_structured() -> None:
     assert usage[0].kind == "primary"
     assert calls[0].provider == "ollama"
     assert output.model_id == "configured-a"
+    assert output.case_latency_ms == usage[0].latency_ms
+    assert output.case_input_tokens == usage[0].prompt_tokens
+    assert output.case_output_tokens == usage[0].completion_tokens
 
 
 def test_evaluate_case_counts_a_schema_repair() -> None:
@@ -169,6 +172,12 @@ def test_evaluate_case_counts_a_schema_repair() -> None:
     assert output.succeeded is True
     assert usage[0].kind == "primary"
     assert usage[1].kind == "repair"
+    assert output.case_latency_ms == usage[0].latency_ms + usage[1].latency_ms
+    assert output.case_input_tokens == usage[0].prompt_tokens + usage[1].prompt_tokens
+    assert output.case_output_tokens == (
+        usage[0].completion_tokens + usage[1].completion_tokens
+    )
+    assert output.case_cost_usd == Decimal("0")
 
 
 def test_write_day5_evidence_only_after_72_evals(tmp_path: Path) -> None:

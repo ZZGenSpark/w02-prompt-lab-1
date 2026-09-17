@@ -84,6 +84,15 @@ def usage_kind(call_index: int, attempt: int) -> UsageKind:
     return "repair" if attempt <= 1 else "repair_retry"
 
 
+def case_expense(calls: Sequence[CallRecord]) -> tuple[int, int, float, Decimal]:
+    """Sum tokens, latency, and cost across every attempt for one case."""
+    input_tokens = sum(int(record.input_tokens) for record in calls)
+    output_tokens = sum(int(record.output_tokens) for record in calls)
+    latency_ms = float(sum(int(record.latency_ms) for record in calls))
+    cost_usd = sum((Decimal(str(record.cost_usd)) for record in calls), Decimal("0"))
+    return input_tokens, output_tokens, latency_ms, cost_usd
+
+
 def usage_from_call_record(
     record: CallRecord,
     *,
@@ -188,6 +197,7 @@ def evaluate_case(
         )
         for record in adapter.records
     ]
+    input_tokens, output_tokens, latency_ms, cost_usd = case_expense(adapter.records)
     output_record = OutputRecord(
         run_id=run_id,
         task=task,
@@ -200,6 +210,10 @@ def evaluate_case(
         repairs=max(adapter.calls - 1, 0),
         output=None if parsed is None else parsed.model_dump(mode="json"),
         error=error,
+        case_input_tokens=input_tokens,
+        case_output_tokens=output_tokens,
+        case_latency_ms=latency_ms,
+        case_cost_usd=cost_usd,
     )
     if parsed is None:
         scores = failure_scores(

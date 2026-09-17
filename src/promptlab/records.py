@@ -43,6 +43,11 @@ class OutputRecord(Record):
     repairs: int
     output: dict[str, Any] | None
     error: str | None = None
+    # Sum of every model-call attempt for this case (primary + repairs + retries).
+    case_input_tokens: int = 0
+    case_output_tokens: int = 0
+    case_latency_ms: float = 0.0
+    case_cost_usd: Decimal = Decimal("0")
 
 
 class ScoreRecord(Record):
