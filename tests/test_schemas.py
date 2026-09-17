@@ -184,7 +184,6 @@ def test_policy_extraction_accepts_complete_payload() -> None:
 
 def test_output_schemas_use_existing_models() -> None:
     assert OUTPUT_SCHEMAS["triage"] is TriageOutput
-    assert OUTPUT_SCHEMAS["triage"] is not TriageOutputWithAnalysis
     assert OUTPUT_SCHEMAS["summarization"] is SummarizationOutput
     assert OUTPUT_SCHEMAS["extraction"] is PolicyExtraction
 

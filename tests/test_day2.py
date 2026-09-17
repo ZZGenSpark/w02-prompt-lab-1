@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from promptlab.config import Settings
+from promptlab.config import DEFAULT_MODEL_A, DEFAULT_MODEL_B, Settings
 from promptlab.day2 import (
     CASE_IDS,
     CASES_PATH,
@@ -78,8 +78,8 @@ def test_day2_source_has_no_model_identifier_literals() -> None:
     from promptlab import day2
 
     source = Path(day2.__file__).read_text(encoding="utf-8")
-    assert "mistral:7b" not in source
-    assert "qwen3:8b" not in source
+    assert DEFAULT_MODEL_A not in source
+    assert DEFAULT_MODEL_B not in source
 
 
 def test_load_cases_missing_id_raises(tmp_path: Path) -> None:

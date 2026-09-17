@@ -17,6 +17,10 @@ PII_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"(?<!\d)(?:\+1[-. ]?)?\(?\d{3}\)?[-. ]\d{3}[-. ]\d{4}(?!\d)"),
 )
 
+# Default model identifiers — single source of truth used by Settings and tests.
+DEFAULT_MODEL_A = "mistral:7b"
+DEFAULT_MODEL_B = "qwen3:8b"
+
 
 @dataclass(frozen=True)
 class ModelConfig:
@@ -24,6 +28,7 @@ class ModelConfig:
     model_id: str
     input_usd_per_million: Decimal = Decimal("0")
     output_usd_per_million: Decimal = Decimal("0")
+    think: bool | None = None
 
     def cost(self, prompt_tokens: int, completion_tokens: int) -> Decimal:
         million = Decimal(1_000_000)
@@ -31,6 +36,13 @@ class ModelConfig:
             Decimal(prompt_tokens) * self.input_usd_per_million / million
             + Decimal(completion_tokens) * self.output_usd_per_million / million
         )
+
+
+def _env_flag(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
 @dataclass(frozen=True)
@@ -46,15 +58,19 @@ class Settings:
     @classmethod
     def from_env(cls) -> Settings:
         load_dotenv(PROJECT_ROOT / ".env")
-        model_a = os.getenv("MODEL_A", "mistral:7b")
-        model_b = os.getenv("MODEL_B", "qwen3:8b")
+        model_a = os.getenv("MODEL_A", DEFAULT_MODEL_A)
+        model_b = os.getenv("MODEL_B", DEFAULT_MODEL_B)
         return cls(
             ollama_base_url=os.getenv(
                 "OLLAMA_BASE_URL", "http://host.docker.internal:11434"
             ).rstrip("/"),
             models={
                 "mistral": ModelConfig(logical_name="mistral", model_id=model_a),
-                "qwen": ModelConfig(logical_name="qwen", model_id=model_b),
+                "qwen": ModelConfig(
+                    logical_name="qwen",
+                    model_id=model_b,
+                    think=_env_flag("QWEN_THINK", default=False),
+                ),
             },
             temperature=float(os.getenv("TEMPERATURE", "0.0")),
             max_retries=int(os.getenv("MAX_RETRIES", "2")),
@@ -62,4 +78,3 @@ class Settings:
             per_run_cap_usd=Decimal(os.getenv("PER_RUN_CAP_USD", "2.00")),
             weekly_cap_usd=Decimal(os.getenv("WEEKLY_CAP_USD", "25.00")),
         )
-

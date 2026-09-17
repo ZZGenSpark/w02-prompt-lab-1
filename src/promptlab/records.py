@@ -38,10 +38,16 @@ class OutputRecord(Record):
     model_name: str
     model_id: str
     prompt_version: str
+    prompt_id: str = ""
     succeeded: bool
     repairs: int
     output: dict[str, Any] | None
     error: str | None = None
+    # Sum of every model-call attempt for this case (primary + repairs + retries).
+    case_input_tokens: int = 0
+    case_output_tokens: int = 0
+    case_latency_ms: float = 0.0
+    case_cost_usd: Decimal = Decimal("0")
 
 
 class ScoreRecord(Record):
@@ -56,6 +62,8 @@ class ScoreRecord(Record):
     denominator: int
     lower_is_better: bool = False
     detail: str | None = None
+    model_id: str = ""
+    prompt_id: str = ""
 
 
 def append_record(path: Path, record: Record) -> None:
