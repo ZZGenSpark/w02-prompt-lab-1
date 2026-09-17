@@ -38,6 +38,7 @@ class OutputRecord(Record):
     model_name: str
     model_id: str
     prompt_version: str
+    prompt_id: str = ""
     succeeded: bool
     repairs: int
     output: dict[str, Any] | None
@@ -56,6 +57,8 @@ class ScoreRecord(Record):
     denominator: int
     lower_is_better: bool = False
     detail: str | None = None
+    model_id: str = ""
+    prompt_id: str = ""
 
 
 def append_record(path: Path, record: Record) -> None:

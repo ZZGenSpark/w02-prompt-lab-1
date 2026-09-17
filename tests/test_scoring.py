@@ -72,7 +72,8 @@ def test_queue_accuracy_compares_predicted_queue_to_gold() -> None:
 
     assert scores["queue_correct"].numerator == 0
     assert scores["queue_correct"].denominator == 1
-    assert scores["queue_correct"].scorer_version == "day4.v1"
+    assert scores["queue_correct"].scorer_version == "day5.v2"
+    assert scores["queue_correct"].model_id == "mistral:7b"
 
 
 def test_escalation_accuracy_uses_escalation_required_not_human_review() -> None:
