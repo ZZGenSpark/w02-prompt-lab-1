@@ -17,6 +17,10 @@ PII_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"(?<!\d)(?:\+1[-. ]?)?\(?\d{3}\)?[-. ]\d{3}[-. ]\d{4}(?!\d)"),
 )
 
+# Default model identifiers — single source of truth used by Settings and tests.
+DEFAULT_MODEL_A = "mistral:7b"
+DEFAULT_MODEL_B = "qwen3:8b"
+
 
 @dataclass(frozen=True)
 class ModelConfig:
@@ -54,8 +58,8 @@ class Settings:
     @classmethod
     def from_env(cls) -> Settings:
         load_dotenv(PROJECT_ROOT / ".env")
-        model_a = os.getenv("MODEL_A", "mistral:7b")
-        model_b = os.getenv("MODEL_B", "qwen3:8b")
+        model_a = os.getenv("MODEL_A", DEFAULT_MODEL_A)
+        model_b = os.getenv("MODEL_B", DEFAULT_MODEL_B)
         return cls(
             ollama_base_url=os.getenv(
                 "OLLAMA_BASE_URL", "http://host.docker.internal:11434"
@@ -74,4 +78,3 @@ class Settings:
             per_run_cap_usd=Decimal(os.getenv("PER_RUN_CAP_USD", "2.00")),
             weekly_cap_usd=Decimal(os.getenv("WEEKLY_CAP_USD", "25.00")),
         )
-

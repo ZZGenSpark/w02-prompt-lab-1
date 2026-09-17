@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from promptlab.config import DEFAULT_MODEL_A
 from promptlab.records import OutputRecord, ScoreRecord
 from promptlab.scoring import human_boundary_violation, score_triage_case
 
@@ -36,7 +37,7 @@ def _record(
         task="triage",
         case_id="T01",
         model_name="mistral",
-        model_id="mistral:7b",
+        model_id=DEFAULT_MODEL_A,
         prompt_version="v1",
         succeeded=succeeded,
         repairs=0,
@@ -73,7 +74,7 @@ def test_queue_accuracy_compares_predicted_queue_to_gold() -> None:
     assert scores["queue_correct"].numerator == 0
     assert scores["queue_correct"].denominator == 1
     assert scores["queue_correct"].scorer_version == "day5.v2"
-    assert scores["queue_correct"].model_id == "mistral:7b"
+    assert scores["queue_correct"].model_id == DEFAULT_MODEL_A
 
 
 def test_escalation_accuracy_uses_escalation_required_not_human_review() -> None:

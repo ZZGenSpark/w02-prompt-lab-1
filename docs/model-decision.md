@@ -124,7 +124,9 @@ human-boundary or PII fails on the selected configuration.
 - prompt version: `summarize.v1 transfer`
 - measured reason: 12/12 valid with 0/12 repairs; required evidence 60/60;
 citations 65/65; status 9/12; version selection 1/1; lower token use and
-median latency (12492 ms, n=12) than Mistral (14619.5 ms, n=24) on this run.
+median call latency (12492 ms, n=12) than Mistral (14619.5 ms, n=24); median
+case latency 12492 ms vs 28367.5 ms for Mistral (Mistral doubled because every
+case required one schema repair call) on this run.
 - rejected alternative(s): mistral / `summarize.v1` — also 12/12 valid, but
 12/12 repairs, 59/60 recall, 62/63 citations, status 7/12, and higher output
 tokens. Qwen still invented unsupported fields on S04, S05, S09, and S12;

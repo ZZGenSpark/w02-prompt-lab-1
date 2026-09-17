@@ -8,7 +8,7 @@ from uuid import uuid4
 import pytest
 
 from promptlab.adapters.base import CompletionRequest, CompletionResult
-from promptlab.config import ModelConfig, Settings
+from promptlab.config import DEFAULT_MODEL_A, DEFAULT_MODEL_B, ModelConfig, Settings
 from promptlab.corpus import Case, GoldLabel
 from promptlab.prompts import prompt_label, task_prompt
 from promptlab.records import OutputRecord, ScoreRecord
@@ -290,8 +290,8 @@ def test_run_source_has_no_model_identifier_literals_or_direct_ollama() -> None:
     from promptlab import run as run_mod
 
     source = Path(run_mod.__file__).read_text(encoding="utf-8")
-    assert "mistral:7b" not in source
-    assert "qwen3:8b" not in source
+    assert DEFAULT_MODEL_A not in source
+    assert DEFAULT_MODEL_B not in source
     assert "/api/generate" not in source
     assert "httpx" not in source
     assert "complete_structured" in source

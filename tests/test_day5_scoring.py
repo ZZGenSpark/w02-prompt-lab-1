@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from promptlab.config import DEFAULT_MODEL_A, DEFAULT_MODEL_B
 from promptlab.corpus import GoldLabel
 from promptlab.records import ScoreRecord
 from promptlab.schemas import (
@@ -112,7 +113,7 @@ def test_required_evidence_recall_counts_missed_recoverable_fields() -> None:
             output=output,
             gold=_extraction_gold(),
             source=_source(),
-            model_id="mistral:7b",
+            model_id=DEFAULT_MODEL_A,
             prompt_id="extract",
         )
     )
@@ -121,7 +122,7 @@ def test_required_evidence_recall_counts_missed_recoverable_fields() -> None:
     assert recall.denominator == 4
     assert recall.detail is not None
     assert "review_frequency" in recall.detail
-    assert recall.model_id == "mistral:7b"
+    assert recall.model_id == DEFAULT_MODEL_A
     assert recall.prompt_id == "extract"
 
 
@@ -263,7 +264,7 @@ def test_failure_scores_zero_evidence_metrics_with_gold_denominators() -> None:
             model_name="test",
             prompt_version="v2",
             gold=_extraction_gold(),
-            model_id="qwen3:8b",
+            model_id=DEFAULT_MODEL_B,
             prompt_id="extract",
         )
     )
@@ -273,7 +274,7 @@ def test_failure_scores_zero_evidence_metrics_with_gold_denominators() -> None:
     assert scores["citation_correctness"].numerator == 0
     assert scores["document_status_correct"].numerator == 0
     assert recall.scorer_version == "day5.v2"
-    assert recall.model_id == "qwen3:8b"
+    assert recall.model_id == DEFAULT_MODEL_B
     assert recall.prompt_id == "extract"
 
 

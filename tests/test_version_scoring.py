@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 
+from promptlab.config import DEFAULT_MODEL_A
 from promptlab.corpus import GoldLabel
 from promptlab.rules import VersionCandidate
 from promptlab.schemas import DocumentStatus, EvidenceField, PolicyExtraction, SummarizationOutput
@@ -94,7 +95,7 @@ def test_version_selection_scores_select_current_version_not_model_opinion() -> 
             ),
             "E02": _extraction(version="2.0", effective_date="2025-01-01"),
         },
-        model_id="mistral:7b",
+        model_id=DEFAULT_MODEL_A,
         prompt_id="extract",
     )
     assert len(scores) == 1
@@ -106,7 +107,7 @@ def test_version_selection_scores_select_current_version_not_model_opinion() -> 
     assert score.detail == "expected=E02; selected=E02"
     assert score.scorer_version == "day5.v2"
     assert SCORER_VERSION == "day5.v2"
-    assert score.model_id == "mistral:7b"
+    assert score.model_id == DEFAULT_MODEL_A
     assert score.prompt_id == "extract"
 
 
