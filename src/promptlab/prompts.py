@@ -15,7 +15,17 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
+from promptlab.schemas import TaskName
+
 PROMPT_DIR = Path(__file__).resolve().parents[1] / "prompts"
+
+# Day 5 evaluation prompts. Qwen runs the same versions as a prompt-transfer test.
+TASK_PROMPTS: dict[TaskName, tuple[str, str]] = {
+    "summarization": ("summarize", "v1"),
+    "extraction": ("extract", "v2"),
+    "triage": ("triage", "v1"),
+}
+REFERENCE_MODEL = "mistral"
 
 DOCUMENT_MARKER_CLOSE = "</document>"
 CUSTOMER_MARKER_CLOSE = "</customer_message>"
@@ -127,3 +137,22 @@ def render_user(
     for name in required:
         rendered = rendered.replace("{" + name + "}", values[name])
     return rendered
+
+
+def task_prompt(task: TaskName) -> tuple[str, str]:
+    """Return the configured ``(prompt_id, version)`` for a Day 5 task."""
+    return TASK_PROMPTS[task]
+
+
+def is_prompt_transfer(model_name: str) -> bool:
+    """True when the model is not the one the prompt was developed against."""
+    return model_name != REFERENCE_MODEL
+
+
+def prompt_label(task: TaskName, model_name: str, prompt_version: str) -> str:
+    """Human-readable prompt version for reports, with transfer rows labeled."""
+    prompt_id, _configured = task_prompt(task)
+    label = prompt_version if "." in prompt_version else f"{prompt_id}.{prompt_version}"
+    if is_prompt_transfer(model_name) and not label.endswith(" transfer"):
+        return f"{label} transfer"
+    return label

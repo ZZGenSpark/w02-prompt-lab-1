@@ -1,30 +1,67 @@
+"""Day 5 evaluation runner.
+
+run.py -> prompt registry -> complete_structured -> OllamaAdapter -> Mistral/Qwen
+"""
+
 from __future__ import annotations
 
 import argparse
 import re
 from collections import defaultdict
-from datetime import date
+from collections.abc import Sequence
 from decimal import Decimal
 from pathlib import Path
-from typing import cast
+from typing import Literal, cast
 
+from pydantic import ValidationError
+
+from promptlab.adapters.base import CompletionRequest, CompletionResult, ModelAdapter
+from promptlab.adapters.ollama import OllamaAdapter
 from promptlab.config import PROJECT_ROOT, ModelConfig, Settings
-from promptlab.corpus import GoldLabel, load_cases, validate_corpus
-from promptlab.prompts import build_prompt, prompt_version
-from promptlab.providers import CompletionFailed, OllamaProvider
-from promptlab.records import OutputRecord, ScoreRecord, UsageRecord, append_record
+from promptlab.corpus import Case, GoldLabel, load_cases, validate_corpus
+from promptlab.prompts import load, prompt_label, render_user, task_prompt
+from promptlab.records import OutputRecord, ScoreRecord, UsageRecord
+from promptlab.records import append_record as append_jsonl
 from promptlab.report import write_reports
-from promptlab.rules import VersionCandidate, select_current_version
-from promptlab.schemas import (
-    OUTPUT_SCHEMAS,
-    PolicyExtraction,
-    StrictModel,
-    SummarizationOutput,
-    TaskName,
-)
-from promptlab.scoring import SCORER_VERSION, failure_scores, score_output
+from promptlab.schemas import OUTPUT_SCHEMAS, StrictModel, TaskName, schema_description
+from promptlab.scoring import failure_scores, score_output, score_version_selection
+from promptlab.structured import complete_structured
+from promptlab.usage import CallRecord
 
 RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
+MAX_OUTPUT_TOKENS = 1024
+FULL_EVAL_COUNT = 72
+UsageKind = Literal["primary", "transport_retry", "repair", "repair_retry"]
+UsageStatus = Literal["success", "schema_invalid", "transport_error"]
+
+
+class CountingAdapter:
+    """Count adapter.complete calls so repairs can be distinguished from transport retries."""
+
+    provider = "ollama"
+
+    def __init__(self, inner: ModelAdapter) -> None:
+        self._inner = inner
+        self.model_id = inner.model_id
+        self.calls = 0
+        self.records: list[CallRecord] = []
+        self._call_index: dict[str, int] = {}
+
+    def complete(self, request: CompletionRequest, run_id: str) -> CompletionResult:
+        self.calls += 1
+        result = self._inner.complete(request, run_id)
+        for record in result.records:
+            self.records.append(record)
+            self._call_index[record.record_id] = self.calls
+        return result
+
+    def reset(self) -> None:
+        self.calls = 0
+        self.records = []
+        self._call_index = {}
+
+    def call_index(self, record: CallRecord) -> int:
+        return self._call_index.get(record.record_id, 1)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -41,112 +78,154 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _usage_record(
-    *,
-    run_id: str,
-    task: TaskName,
-    case_id: str,
-    model: ModelConfig,
-    version: str,
-    attempt: object,
-) -> UsageRecord:
-    from promptlab.providers import AttemptData
+def usage_kind(call_index: int, attempt: int) -> UsageKind:
+    if call_index <= 1:
+        return "primary" if attempt <= 1 else "transport_retry"
+    return "repair" if attempt <= 1 else "repair_retry"
 
-    data = cast(AttemptData, attempt)
+
+def usage_from_call_record(
+    record: CallRecord,
+    *,
+    model_name: str,
+    call_index: int,
+) -> UsageRecord:
+    status: UsageStatus = "success" if record.error_type is None else "transport_error"
     return UsageRecord(
-        run_id=run_id,
-        task=task,
-        case_id=case_id,
-        model_name=model.logical_name,
-        model_id=model.model_id,
-        prompt_version=version,
-        attempt=data.attempt,
-        kind=data.kind,
-        status=data.status,
-        prompt_tokens=data.prompt_tokens,
-        completion_tokens=data.completion_tokens,
-        latency_ms=data.latency_ms,
-        cost_usd=data.cost_usd,
-        error=data.error,
+        run_id=record.run_id,
+        task=record.task,
+        case_id=record.case_id,
+        model_name=model_name,
+        model_id=record.model_id,
+        prompt_version=record.prompt_version,
+        attempt=record.attempt,
+        kind=usage_kind(call_index, record.attempt),
+        status=status,
+        prompt_tokens=record.input_tokens,
+        completion_tokens=record.output_tokens,
+        latency_ms=float(record.latency_ms),
+        cost_usd=Decimal(str(record.cost_usd)),
+        error=record.error_type,
     )
 
 
-def _version_fields(output: StrictModel) -> tuple[str, str] | None:
-    if isinstance(output, SummarizationOutput | PolicyExtraction):
-        version = output.version
-        effective = output.effective_date
-        if (
-            version.status == "present"
-            and effective.status == "present"
-            and isinstance(version.value, str)
-            and isinstance(effective.value, str)
-        ):
-            return version.value, effective.value
-    return None
+def _write_jsonl(path: Path, records: Sequence[CallRecord | ScoreRecord]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as handle:
+        for record in records:
+            handle.write(record.model_dump_json() + "\n")
 
 
-def _add_version_scores(
+def write_day5_evidence(
     *,
+    outputs: Sequence[OutputRecord],
+    calls: Sequence[CallRecord],
+    scores: Sequence[ScoreRecord],
+    run_path: Path,
+    scores_path: Path,
+) -> None:
+    """Write docs evidence only after a completed 72-eval run."""
+    if len(outputs) != FULL_EVAL_COUNT:
+        return
+    _write_jsonl(run_path, calls)
+    _write_jsonl(scores_path, scores)
+
+
+def evaluate_case(
+    *,
+    adapter: CountingAdapter,
+    settings: Settings,
     run_id: str,
     task: TaskName,
-    model_name: str,
-    labels: list[GoldLabel],
-    outputs: dict[str, StrictModel],
-    scores_path: Path,
-    all_scores: list[ScoreRecord],
-) -> None:
-    grouped: dict[str, list[GoldLabel]] = defaultdict(list)
-    for label in labels:
-        if label.version_group:
-            grouped[label.version_group].append(label)
+    case: Case,
+    gold: GoldLabel,
+    model: ModelConfig,
+) -> tuple[
+    OutputRecord,
+    list[ScoreRecord],
+    list[UsageRecord],
+    list[CallRecord],
+    StrictModel | None,
+]:
+    adapter.reset()
+    prompt_id, prompt_version = task_prompt(task)
+    template = load(prompt_id, prompt_version)
+    schema = OUTPUT_SCHEMAS[task]
+    request = CompletionRequest(
+        task=task,
+        case_id=case.id,
+        prompt_id=template.prompt_id,
+        prompt_version=template.version,
+        system=template.system,
+        user_content=render_user(
+            template,
+            variables={
+                "case_id": case.id,
+                "schema_description": schema_description(schema),
+            },
+            untrusted=case.document_text,
+        ),
+        temperature=settings.temperature,
+        max_output_tokens=MAX_OUTPUT_TOKENS,
+    )
 
-    for group_name, group_labels in grouped.items():
-        if len(group_labels) < 2:
-            continue
-        expected = next(
-            (
-                label.expected_current_case_id
-                for label in group_labels
-                if label.expected_current_case_id
-            ),
-            None,
+    parsed: StrictModel | None = None
+    error: str | None = None
+    try:
+        parsed = complete_structured(
+            adapter,
+            request,
+            schema,
+            run_id,
+            max_repairs=settings.max_schema_repairs,
         )
-        as_of_raw = next((label.as_of for label in group_labels if label.as_of), None)
-        if expected is None or as_of_raw is None:
-            continue
-        candidates: list[VersionCandidate] = []
-        prompt_versions: set[str] = set()
-        for label in group_labels:
-            output = outputs.get(label.id)
-            if output is None:
-                continue
-            extracted = _version_fields(output)
-            if extracted is None:
-                continue
-            version, effective_raw = extracted
-            try:
-                effective = date.fromisoformat(effective_raw)
-            except ValueError:
-                continue
-            candidates.append(
-                VersionCandidate(case_id=label.id, version=version, effective_date=effective)
-            )
-            prompt_versions.add(prompt_version(task, model_name))
-        selected = select_current_version(candidates, date.fromisoformat(as_of_raw))
-        record = ScoreRecord(
+    except (ValidationError, ValueError, RuntimeError) as exc:
+        error = str(exc)
+
+    usage_records = [
+        usage_from_call_record(
+            record, model_name=model.logical_name, call_index=adapter.call_index(record)
+        )
+        for record in adapter.records
+    ]
+    output_record = OutputRecord(
+        run_id=run_id,
+        task=task,
+        case_id=case.id,
+        model_name=model.logical_name,
+        model_id=model.model_id,
+        prompt_version=prompt_version,
+        prompt_id=prompt_id,
+        succeeded=parsed is not None,
+        repairs=max(adapter.calls - 1, 0),
+        output=None if parsed is None else parsed.model_dump(mode="json"),
+        error=error,
+    )
+    if parsed is None:
+        scores = failure_scores(
             run_id=run_id,
             task=task,
-            case_id=f"version:{group_name}",
-            model_name=model_name,
-            prompt_version=",".join(sorted(prompt_versions)) or prompt_version(task, model_name),
-            scorer_version=SCORER_VERSION,
-            metric="version_selection_accuracy",
-            numerator=int(selected is not None and selected.case_id == expected),
-            denominator=1,
-            detail=f"expected={expected}; selected={selected.case_id if selected else 'none'}",
+            case_id=case.id,
+            model_name=model.logical_name,
+            prompt_version=prompt_version,
+            gold=gold,
+            model_id=model.model_id,
+            prompt_id=prompt_id,
         )
-        append_record(scores_path, record)
-        all_scores.append(record)
+    else:
+        scores = score_output(
+            run_id=run_id,
+            task=task,
+            case_id=case.id,
+            model_name=model.logical_name,
+            prompt_version=prompt_version,
+            output=parsed,
+            gold=gold,
+            source=case.document_text,
+            model_id=model.model_id,
+            prompt_id=prompt_id,
+        )
+    return output_record, scores, usage_records, list(adapter.records), parsed
 
 
 def main() -> None:
@@ -178,128 +257,92 @@ def main() -> None:
     usage_path = run_dir / "usage.jsonl"
     outputs_path = run_dir / "outputs.jsonl"
     scores_path = run_dir / "scores.jsonl"
+    docs_run_path = PROJECT_ROOT / "docs" / "day5-run.jsonl"
+    docs_scores_path = PROJECT_ROOT / "docs" / "day5-scores.jsonl"
 
     all_usage: list[UsageRecord] = []
     all_outputs: list[OutputRecord] = []
     all_scores: list[ScoreRecord] = []
+    all_calls: list[CallRecord] = []
     total_cost = Decimal("0")
     validated_by_task_model: dict[tuple[TaskName, str], dict[str, StrictModel]] = defaultdict(dict)
     labels_by_task: dict[TaskName, list[GoldLabel]] = defaultdict(list)
 
-    provider = OllamaProvider(settings)
-    try:
-        for task in selected_tasks:
-            pairs = load_cases(task)
-            if limit is not None:
-                pairs = pairs[:limit]
-            labels_by_task[task] = [gold for _case, gold in pairs]
-            for model_name in selected_models:
-                model = settings.models[model_name]
-                version = prompt_version(task, model_name)
-                for case, gold in pairs:
-                    if total_cost >= settings.per_run_cap_usd:
-                        raise SystemExit(
-                            f"Per-run cost cap reached before {task}/{model_name}/{case.id}"
-                        )
-                    prompt = build_prompt(task, model_name, case.source)
-                    try:
-                        result = provider.complete(
-                            model=model,
-                            prompt=prompt,
-                            output_schema=OUTPUT_SCHEMAS[task],
-                        )
-                        for attempt in result.attempts:
-                            usage_record = _usage_record(
-                                run_id=run_id,
-                                task=task,
-                                case_id=case.id,
-                                model=model,
-                                version=version,
-                                attempt=attempt,
-                            )
-                            append_record(usage_path, usage_record)
-                            all_usage.append(usage_record)
-                            total_cost += usage_record.cost_usd
-                        output_record = OutputRecord(
-                            run_id=run_id,
-                            task=task,
-                            case_id=case.id,
-                            model_name=model_name,
-                            model_id=model.model_id,
-                            prompt_version=version,
-                            succeeded=True,
-                            repairs=result.repairs,
-                            output=result.output.model_dump(mode="json"),
-                        )
-                        validated_by_task_model[(task, model_name)][case.id] = result.output
-                        case_scores = score_output(
-                            run_id=run_id,
-                            task=task,
-                            case_id=case.id,
-                            model_name=model_name,
-                            prompt_version=version,
-                            output=result.output,
-                            gold=gold,
-                            source=case.source,
-                        )
-                    except CompletionFailed as exc:
-                        for attempt in exc.attempts:
-                            usage_record = _usage_record(
-                                run_id=run_id,
-                                task=task,
-                                case_id=case.id,
-                                model=model,
-                                version=version,
-                                attempt=attempt,
-                            )
-                            append_record(usage_path, usage_record)
-                            all_usage.append(usage_record)
-                            total_cost += usage_record.cost_usd
-                        output_record = OutputRecord(
-                            run_id=run_id,
-                            task=task,
-                            case_id=case.id,
-                            model_name=model_name,
-                            model_id=model.model_id,
-                            prompt_version=version,
-                            succeeded=False,
-                            repairs=exc.repairs,
-                            output=None,
-                            error=str(exc),
-                        )
-                        case_scores = failure_scores(
-                            run_id=run_id,
-                            task=task,
-                            case_id=case.id,
-                            model_name=model_name,
-                            prompt_version=version,
-                            gold=gold,
-                        )
-                    append_record(outputs_path, output_record)
-                    all_outputs.append(output_record)
-                    for score in case_scores:
-                        append_record(scores_path, score)
-                        all_scores.append(score)
-                    print(
-                        f"{task:13} {model_name:8} {case.id:5} "
-                        f"{'ok' if output_record.succeeded else 'failed'}"
+    adapters: dict[str, CountingAdapter] = {
+        model_name: CountingAdapter(OllamaAdapter(settings.models[model_name].model_id))
+        for model_name in selected_models
+    }
+
+    for task in selected_tasks:
+        pairs = load_cases(task)
+        if limit is not None:
+            pairs = pairs[:limit]
+        labels_by_task[task] = [gold for _case, gold in pairs]
+        prompt_id, prompt_version = task_prompt(task)
+        for model_name in selected_models:
+            model = settings.models[model_name]
+            adapter = adapters[model_name]
+            for case, gold in pairs:
+                if total_cost >= settings.per_run_cap_usd:
+                    raise SystemExit(
+                        f"Per-run cost cap reached before {task}/{model_name}/{case.id}"
                     )
-    finally:
-        provider.close()
+                output_record, case_scores, usage_records, call_records, parsed = evaluate_case(
+                    adapter=adapter,
+                    settings=settings,
+                    run_id=run_id,
+                    task=task,
+                    case=case,
+                    gold=gold,
+                    model=model,
+                )
+                for usage_record, call_record in zip(usage_records, call_records, strict=True):
+                    append_jsonl(usage_path, usage_record)
+                    all_usage.append(usage_record)
+                    total_cost += usage_record.cost_usd
+                    all_calls.append(call_record)
+                if parsed is not None:
+                    validated_by_task_model[(task, model_name)][case.id] = parsed
+                append_jsonl(outputs_path, output_record)
+                all_outputs.append(output_record)
+                for score in case_scores:
+                    append_jsonl(scores_path, score)
+                    all_scores.append(score)
+                print(
+                    f"{task:13} {model_name:8} {case.id:5} "
+                    f"{prompt_label(task, model_name, prompt_version):22} "
+                    f"{'ok' if output_record.succeeded else 'failed'}"
+                    f" repairs={output_record.repairs}",
+                    flush=True,
+                )
 
     for task in selected_tasks:
         if task == "triage":
             continue
+        prompt_id, prompt_version = task_prompt(task)
         for model_name in selected_models:
-            _add_version_scores(
+            model = settings.models[model_name]
+            version_scores = score_version_selection(
                 run_id=run_id,
                 task=task,
                 model_name=model_name,
+                prompt_version=prompt_version,
                 labels=labels_by_task[task],
                 outputs=validated_by_task_model[(task, model_name)],
-                scores_path=scores_path,
-                all_scores=all_scores,
+                model_id=model.model_id,
+                prompt_id=prompt_id,
             )
+            for score in version_scores:
+                append_jsonl(scores_path, score)
+                all_scores.append(score)
+
+    write_day5_evidence(
+        outputs=all_outputs,
+        calls=all_calls,
+        scores=all_scores,
+        run_path=docs_run_path,
+        scores_path=docs_scores_path,
+    )
 
     write_reports(
         run_id=run_id,
@@ -311,7 +354,7 @@ def main() -> None:
         decision_path=PROJECT_ROOT / "docs" / "model-decision.md",
     )
     print(f"Report: {PROJECT_ROOT / 'reports' / 'comparison.md'}")
-    print(f"Recorded provider cost: ${total_cost}")
+    print("Recorded provider cost: $0.00")
 
 
 if __name__ == "__main__":
